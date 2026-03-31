@@ -45,7 +45,7 @@ export function Toolbar() {
       <div className="toolbar-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <span style={{ fontWeight: 600 }}>PythonVx</span>
         <a 
-          href="https://www.google.com" 
+          href="https://github.com/K-692/PythonVx.git" 
           target="_blank" 
           rel="noopener noreferrer"
           className="github-link"
