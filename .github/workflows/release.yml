@@ -1,0 +1,68 @@
+name: 'Release 🚀'
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags (e.g., v1.0.0)
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest' # For Apple Silicon (aarch64)
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest' # For Intel (x86_64)
+            args: '--target x86_64-apple-darwin'
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: './python-visualizer/package-lock.json'
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Those targets are only used on macos-latest
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: install frontend dependencies
+        run: npm install
+        working-directory: ./python-visualizer
+
+      - name: build tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing and notarization secrets
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'PythonVx ${{ github.ref_name }}'
+          releaseBody: 'See the assets below to download the latest version of PythonVx.'
+          releaseDraft: true
+          prerelease: false
+          projectPath: './python-visualizer'
+          args: ${{ matrix.args }}
