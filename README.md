@@ -6,6 +6,20 @@ PythonVx is a high-fidelity, interactive code visualizer designed to help develo
 
 ---
 
+## 📥 Downloads
+
+Ready to use PythonVx locally without setting up the development environment? Download the latest stable version for your system:
+
+| Platform | Download Link |
+| :--- | :--- |
+| **🪟 Windows** | [Download .msi / .exe](https://github.com/K-692/PythonVx/releases/latest) |
+| **🍎 macOS** | [Download .dmg](https://github.com/K-692/PythonVx/releases/latest) |
+
+> [!TIP]
+> After downloading, you may need to grant permission in your system settings (e.g., Gatekeeper on macOS) before running the app.
+
+---
+
 ## ✨ Features
 
 - **Live Tracing**: Watch your code execute step-by-step with synchronized variable state.
