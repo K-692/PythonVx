@@ -1,6 +1,6 @@
 [package]
 name = "python-visualizer"
-version = "1.0.0"
+version = "1.1.0"
 description = "PythonVx - see your Python code run, step by step"
 authors = ["Krishnendu Pal"]
 license = "MIT"

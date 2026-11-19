@@ -28,6 +28,8 @@ export default defineConfig(async () => ({
           port: 1421,
         }
       : undefined,
+    // allow importing the sample programs from ../samples
+    fs: { allow: [".."] },
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],

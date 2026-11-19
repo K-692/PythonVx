@@ -151,6 +151,23 @@ def cycles_and_unicode():
 
 
 @case
+def scaffold_and_call_values():
+    r = trace("class A:\n    def m(self, x):\n        return x * 2\na = A()\ny = a.m(len('abc'))\nfor i in range(2):\n    if i:\n        pass\n    else:\n        pass\n")
+    blocks = r["scaffold"]["blocks"]["items"]
+    kinds = [b["k"] for b in blocks]
+    assert kinds == ["class", "stmt", "stmt", "for"], kinds
+    assert blocks[0]["items"][1]["k"] == "def" and blocks[0]["items"][1]["args"] == ["self", "x"]
+    line5 = r["scaffold"]["lines"]["5"]
+    assert any(t.get("store") and t["s"] == "y" for t in line5)
+    calls = [c for s in r["steps"] for c in s.get("calls", []) if c[0] == 5]
+    values = sorted(c[2] for c in calls)
+    assert values == ["3", "6"], values
+    # the helper must not leak into the user's program
+    r2 = trace("print('__pvx_call__' in dir(__builtins__) if isinstance(__builtins__, dict) is False else 0)\n")
+    assert r2["error"] is None
+
+
+@case
 def introspection():
     mods = introspect({"modules": True})["modules"]
     assert "math" in mods and "collections" in mods

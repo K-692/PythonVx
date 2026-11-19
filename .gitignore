@@ -33,3 +33,4 @@ Thumbs.db
 .claude/
 python-visualizer/public/mock.json
 python-visualizer/public/mock2.json
+python-visualizer/public/mock-*.json

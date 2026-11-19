@@ -4,6 +4,7 @@ import { useAppStore } from '../store';
 import type { HeapObject, Step, Trace, ValueRef } from '../types';
 import { clip, errorHint, errorStepIndex, explainStep, heapObject, isBoxed } from '../lib/explain';
 import { isDesktop } from '../lib/runner';
+import { FlowView } from './FlowView';
 
 interface Ctx {
   trace: Trace;
@@ -14,15 +15,24 @@ interface Ctx {
 }
 
 export function Visualizer() {
-  const trace = useAppStore((s) => s.trace);
+  const current = useAppStore((s) => s.trace);
+  const lastGood = useAppStore((s) => s.lastGood);
   const stepIndex = useAppStore((s) => s.stepIndex);
   const status = useAppStore((s) => s.status);
   const runError = useAppStore((s) => s.runError);
   const tracedCode = useAppStore((s) => s.tracedCode);
   const dirty = useAppStore((s) => s.dirty);
+  const view = useAppStore((s) => s.view);
+  const zoom = useAppStore((s) => s.zoom);
   const [hovered, setHovered] = useState<number | null>(null);
 
-  const lines = useMemo(() => tracedCode.split('\n'), [tracedCode]);
+  // While the code has a syntax error (e.g. half-typed), keep showing the
+  // last program that ran, dimmed, with the error on top.
+  const brokenNow = !!current && current.steps.length === 0;
+  const shown = brokenNow && lastGood ? lastGood : current ? { trace: current, code: tracedCode } : null;
+  const trace = shown?.trace ?? null;
+  const code = shown?.code ?? '';
+  const lines = useMemo(() => code.split('\n'), [code]);
 
   if (runError) {
     return (
@@ -37,7 +47,7 @@ export function Visualizer() {
   if (!trace) {
     return (
       <Shell>
-        <div className="empty-hint">{status === 'running' ? 'Running your program…' : 'Write some Python on the left and press Run.'}</div>
+        <div className="empty-hint">{status === 'running' ? 'Running your program…' : 'Write some Python on the left — the diagram appears here.'}</div>
       </Shell>
     );
   }
@@ -49,33 +59,43 @@ export function Visualizer() {
     );
   }
 
-  const step = trace.steps[Math.min(stepIndex, trace.steps.length - 1)];
+  const idx = Math.min(stepIndex, trace.steps.length - 1);
+  const step = trace.steps[idx];
   const top = step.stack[step.stack.length - 1];
   const changed = new Set(step.changes.map(([n, , fid]) => `${fid ?? top?.id}:${n}`));
-  const explanation = explainStep(trace, stepIndex, lines);
-  const isLast = stepIndex === trace.steps.length - 1;
-  const showError = trace.error && (stepIndex >= errorStepIndex(trace));
+  const explanation = explainStep(trace, idx, lines);
+  const isLast = idx === trace.steps.length - 1;
+  const showError = !brokenNow && trace.error && idx >= errorStepIndex(trace);
 
   return (
-    <Shell stale={dirty}>
-      <div className={`explain explain-${explanation.tone}`}>
-        <div className="explain-title">
+    <Shell stale={dirty && !brokenNow} tabs>
+      <div className="sticky-top">
+        {brokenNow && current?.error && (
+          <div className="notice notice-error compact">
+            <div className="notice-title">
+              {current.error.type}
+              {current.error.line ? ` on line ${current.error.line}` : ''}: <span className="notice-msg">{current.error.msg}</span>
+            </div>
+            <div className="notice-hint">Showing the last version that ran — finish or fix the line to update the diagram.</div>
+          </div>
+        )}
+        <div className={`caption caption-${explanation.tone}`}>
           <span className={`badge badge-${explanation.tone}`}>{badgeText(step, explanation.tone)}</span>
-          {explanation.title}
+          <span className="caption-title">{explanation.title}</span>
+          {explanation.details[0] && <span className="caption-detail">{renderInlineCode(explanation.details[0])}</span>}
         </div>
-        {explanation.details.length > 0 && (
-          <ul className="explain-details">
-            {explanation.details.map((d, i) => (
-              <li key={i}>{renderInlineCode(d)}</li>
-            ))}
-          </ul>
+      </div>
+
+      <div className={`zoom-wrap ${brokenNow ? 'dimmed' : ''}`} style={{ zoom } as React.CSSProperties}>
+        {view === 'flow' ? (
+          <FlowView trace={trace} stepIndex={idx} code={code} />
+        ) : (
+          <MemoryView ctx={{ trace, step, changed, hovered, setHovered }} />
         )}
       </div>
 
       {showError && <ErrorCard trace={trace} />}
       {isLast && <Notices trace={trace} />}
-
-      <MemoryView ctx={{ trace, step, changed, hovered, setHovered }} />
     </Shell>
   );
 }
@@ -94,12 +114,34 @@ function renderInlineCode(text: string) {
   );
 }
 
-function Shell({ children, stale }: { children: React.ReactNode; stale?: boolean }) {
+function Shell({ children, stale, tabs }: { children: React.ReactNode; stale?: boolean; tabs?: boolean }) {
+  const view = useAppStore((s) => s.view);
+  const setView = useAppStore((s) => s.setView);
+  const zoom = useAppStore((s) => s.zoom);
+  const setZoom = useAppStore((s) => s.setZoom);
   return (
     <div className="pane pane-visualizer">
       <div className="panel-header">
-        <span>What Python is doing</span>
+        <div className="tabs">
+          <button className={`tab ${view === 'flow' ? 'tab-on' : ''}`} onClick={() => setView('flow')} title="Your code as blocks, with live values">
+            Code flow
+          </button>
+          <button className={`tab ${view === 'memory' ? 'tab-on' : ''}`} onClick={() => setView('memory')} title="Variables and objects with references">
+            Memory
+          </button>
+        </div>
         {stale && <span className="header-hint warn">showing the last run</span>}
+        {tabs && (
+          <div className="zoom-ctl">
+            <button className="icon-btn small" onClick={() => setZoom(zoom - 0.1)} title="Zoom out">
+              −
+            </button>
+            <span>{Math.round(zoom * 100)}%</span>
+            <button className="icon-btn small" onClick={() => setZoom(zoom + 0.1)} title="Zoom in">
+              +
+            </button>
+          </div>
+        )}
       </div>
       <div className="visualizer-scroll">{children}</div>
     </div>

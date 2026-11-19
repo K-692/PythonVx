@@ -20,7 +20,7 @@ const KIND_WORD: Record<string, string> = {
 };
 
 /** Short human description of any value, e.g. `5`, `'hi'`, `a list of 3 items`. */
-export function describeValue(trace: Trace, step: Step, ref: ValueRef | undefined, max = 40): string {
+export function describeValue(trace: Trace, step: Step, ref: ValueRef | undefined, max = 40, compact = false): string {
   if (!ref) return '?';
   if (ref.ref === undefined) return clip(ref.v, max);
   const obj = heapObject(trace, step, ref);
@@ -34,12 +34,12 @@ export function describeValue(trace: Trace, step: Step, ref: ValueRef | undefine
       const [open, close] = obj.k === 'list' ? ['[', ']'] : obj.k === 'set' ? ['{', '}'] : ['(', ')'];
       const literal = obj.len > obj.items.length ? null : `${open}${shown}${close}`;
       if (literal && literal.length <= max) return literal;
-      return `a ${KIND_WORD[obj.k]} of ${obj.len} item${obj.len === 1 ? '' : 's'}`;
+      return compact ? `${obj.type}(${obj.len})` : `a ${KIND_WORD[obj.k]} of ${obj.len} item${obj.len === 1 ? '' : 's'}`;
     }
     case 'dict':
-      return `a ${obj.type === 'dict' ? 'dictionary' : obj.type} with ${obj.len} key${obj.len === 1 ? '' : 's'}`;
+      return compact ? `${obj.type}(${obj.len})` : `a ${obj.type === 'dict' ? 'dictionary' : obj.type} with ${obj.len} key${obj.len === 1 ? '' : 's'}`;
     case 'instance':
-      return `a ${obj.type} object`;
+      return compact ? `${obj.type} obj` : `a ${obj.type} object`;
     case 'function':
       return `function ${obj.name}${obj.sig}`;
     case 'class':

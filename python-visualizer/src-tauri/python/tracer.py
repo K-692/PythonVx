@@ -16,14 +16,17 @@ Usage:
 Only the standard library is used. Supports Python 3.8+.
 """
 
+import ast
 import builtins
 import inspect
 import io
+import keyword
 import json
 import linecache
 import os
 import sys
 import time
+import tokenize
 import traceback
 import types
 
@@ -43,9 +46,22 @@ def _short(text, limit=MAX_STR):
     return text
 
 
+_ADDR = None
+
+
 def _safe_repr(value):
+    global _ADDR
     try:
-        return _short(repr(value))
+        t = type(value)
+        if _is_user_type(t) and t.__repr__ is object.__repr__:
+            return "%s object" % t.__qualname__
+        text = repr(value)
+        if " at 0x" in text:
+            if _ADDR is None:
+                import re
+                _ADDR = re.compile(r" at 0x[0-9a-fA-F]+")
+            text = _ADDR.sub("", text)
+        return _short(text)
     except Exception as exc:  # user __repr__ can fail
         return "<%s object (repr failed: %s)>" % (type(value).__name__, type(exc).__name__)
 
@@ -279,6 +295,198 @@ def _frame_name(code):
 HIDDEN_GLOBALS = {"__builtins__", "__name__", "__doc__", "__package__", "__loader__",
                   "__spec__", "__annotations__", "__file__", "__cached__"}
 
+# ----------------------------------------------------------------------
+# Static structure of the program (drives the block diagram in the UI)
+# ----------------------------------------------------------------------
+
+def _char_col(line_text, byte_col):
+    """ast columns are UTF-8 byte offsets; the UI works in characters."""
+    try:
+        return len(line_text.encode("utf-8")[:byte_col].decode("utf-8", "ignore"))
+    except Exception:
+        return byte_col
+
+
+class CallRecorder(ast.NodeTransformer):
+    """Wraps every call ``f(x)`` as ``__pvx_call__(line, col, f(x))`` so the
+    value each call produced can be shown next to the function's name."""
+
+    def __init__(self, lines):
+        self.lines = lines
+
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        f = node.func
+        if isinstance(f, ast.Name):
+            line, bcol = f.lineno, f.col_offset
+        elif isinstance(f, ast.Attribute) and getattr(f, "end_lineno", None):
+            line, bcol = f.end_lineno, f.end_col_offset - len(f.attr.encode("utf-8"))
+        else:
+            return node
+        text = self.lines[line - 1] if 0 < line <= len(self.lines) else ""
+        wrapped = ast.Call(
+            func=ast.Name(id="__pvx_call__", ctx=ast.Load()),
+            args=[ast.Constant(value=line), ast.Constant(value=_char_col(text, bcol)), node],
+            keywords=[],
+        )
+        return ast.copy_location(wrapped, node)
+
+
+def build_scaffold(code, tree):
+    lines = code.splitlines()
+    store = set()     # (line, col) of names being assigned
+    defs = set()      # (line, col) of def/class names
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            store.add((node.lineno, _char_col(lines[node.lineno - 1], node.col_offset)))
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store) and getattr(node, "end_lineno", None):
+            text = lines[node.end_lineno - 1]
+            store.add((node.end_lineno, _char_col(text, node.end_col_offset - len(node.attr.encode("utf-8")))))
+        elif isinstance(node, ast.arg):
+            store.add((node.lineno, _char_col(lines[node.lineno - 1], node.col_offset)))
+
+    # Tokens, per physical line.
+    tokens = {}
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(code).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        toks = []
+    significant = [t for t in toks if t.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
+                                                       tokenize.DEDENT, tokenize.ENDMARKER, tokenize.COMMENT)]
+    nxt = {}
+    for a, b in zip(significant, significant[1:]):
+        nxt[id(a)] = b
+    prev_sig = None
+    chain = None
+    after_def = False
+    for t in toks:
+        if t.type in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER):
+            continue
+        row = t.start[0]
+        text = t.string
+        if t.start[0] != t.end[0]:
+            text = text.split("\n", 1)[0] + " …"
+        entry = {"s": text, "c": t.start[1]}
+        if t.type == tokenize.COMMENT:
+            entry["k"] = "comment"
+        elif t.type == tokenize.NAME and (keyword.iskeyword(t.string) or t.string in ("match", "case") and after_def is None):
+            entry["k"] = "kw"
+        elif t.type == tokenize.NAME:
+            entry["k"] = "name"
+            is_attr = prev_sig is not None and prev_sig.string == "."
+            chain = (chain + "." + t.string) if (is_attr and chain) else t.string
+            entry["chain"] = chain
+            if is_attr:
+                entry["attr"] = True
+            if (row, t.start[1]) in store:
+                entry["store"] = True
+            n = nxt.get(id(t))
+            if n is not None and n.string == "(":
+                entry["call"] = True
+            if after_def:
+                entry["def"] = True
+        elif t.type == tokenize.NUMBER:
+            entry["k"] = "num"
+        elif t.type == tokenize.STRING or (hasattr(tokenize, "FSTRING_START") and t.type in (
+                tokenize.FSTRING_START, tokenize.FSTRING_MIDDLE, tokenize.FSTRING_END)):
+            entry["k"] = "str"
+        else:
+            entry["k"] = "op"
+        if t.type != tokenize.COMMENT:
+            if t.type != tokenize.NAME and t.string != ".":
+                chain = None
+            after_def = t.type == tokenize.NAME and t.string in ("def", "class")
+            prev_sig = t
+        tokens.setdefault(row, []).append(entry)
+
+    def is_code_line(n):
+        if not (0 < n <= len(lines)):
+            return False
+        st = lines[n - 1].strip()
+        return bool(st) and not st.startswith("#")
+
+    def first_line(node):
+        decos = getattr(node, "decorator_list", None) or []
+        return min([node.lineno] + [d.lineno for d in decos])
+
+    def block(node, qual):
+        start = first_line(node)
+        end = getattr(node, "end_lineno", node.lineno) or node.lineno
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            kind = "def"
+        elif isinstance(node, ast.ClassDef):
+            kind = "class"
+        elif any(isinstance(getattr(node, f, None), list) and getattr(node, f) and isinstance(getattr(node, f)[0], (ast.stmt, ast.excepthandler))
+                 for f in ("body", "orelse", "handlers", "finalbody")) or type(node).__name__ == "Match":
+            kind = type(node).__name__.lower().replace("async", "")
+        else:
+            return {"k": "stmt", "l": start, "e": end}
+
+        inner_qual = qual
+        info = {"k": kind, "l": start, "e": end, "line": node.lineno}
+        if kind == "def":
+            inner_qual = (qual + "." if qual else "") + node.name
+            info["name"] = node.name
+            info["qual"] = inner_qual
+            a = node.args
+            params = [x.arg for x in getattr(a, "posonlyargs", [])] + [x.arg for x in a.args]
+            if a.vararg:
+                params.append("*" + a.vararg.arg)
+            params += [x.arg for x in a.kwonlyargs]
+            if a.kwarg:
+                params.append("**" + a.kwarg.arg)
+            info["args"] = params
+        elif kind == "class":
+            inner_qual = (qual + "." if qual else "") + node.name
+            info["name"] = node.name
+            info["qual"] = inner_qual
+            info["bases"] = [ast.get_source_segment(code, b) or "?" for b in node.bases]
+
+        children = []
+        for field in ("body", "orelse", "handlers", "finalbody"):
+            for child in getattr(node, field, None) or []:
+                if isinstance(child, ast.excepthandler):
+                    clause = {"k": "except", "l": child.lineno, "e": child.end_lineno, "line": child.lineno,
+                              "items": []}
+                    sub = [block(c, inner_qual) for c in child.body]
+                    clause["items"] = _with_headers(clause, sub, is_code_line)
+                    children.append(clause)
+                else:
+                    children.append(block(child, inner_qual))
+        for case in getattr(node, "cases", None) or []:
+            ln = case.pattern.lineno
+            clause = {"k": "case", "l": ln, "e": case.body[-1].end_lineno, "line": ln, "items": []}
+            clause["items"] = _with_headers(clause, [block(c, inner_qual) for c in case.body], is_code_line)
+            children.append(clause)
+
+        # Fold "elif" chains into the parent "if" so they render side by side.
+        flat = []
+        for ch in children:
+            if (kind == "if" and ch["k"] == "if" and 0 < ch["l"] <= len(lines)
+                    and lines[ch["l"] - 1].lstrip().startswith("elif")):
+                flat.extend(ch["items"])
+            else:
+                flat.append(ch)
+        info["items"] = _with_headers(info, flat, is_code_line)
+        return info
+
+    module = {"k": "module", "l": 1, "e": len(lines), "items": [block(n, "") for n in tree.body]}
+    return {"lines": {str(k): v for k, v in tokens.items()}, "blocks": module}
+
+
+def _with_headers(info, children, is_code_line):
+    """Lines of a compound statement not covered by a child (``if ...:``,
+    ``else:``, ``finally:``, decorators) become header rows."""
+    covered = set()
+    for ch in children:
+        covered.update(range(ch["l"], ch["e"] + 1))
+    items = list(children)
+    for n in range(info["l"], info["e"] + 1):
+        if n not in covered and is_code_line(n):
+            items.append({"k": "hdr", "l": n, "e": n})
+    items.sort(key=lambda x: (x["l"], 0 if x["k"] == "hdr" else 1))
+    return items
+
 
 class Tracer:
     def __init__(self, code, stdin_text, max_steps, time_limit):
@@ -294,6 +502,7 @@ class Tracer:
         self.frame_counter = 0
         self.prev_sigs = {}       # frame number -> {var: signature}
         self.raising = set()      # frame numbers with an exception in flight
+        self.line_step = {}       # frame number -> index of its current "line" step
         self.start = 0.0
         self.limit_hit = None
         self.sleep_capped = False
@@ -439,10 +648,35 @@ class Tracer:
         elif event == "exception":
             exc_type, exc_value = arg[0], arg[1]
             step["exc"] = {"type": exc_type.__name__, "msg": _short(str(exc_value), 400)}
+        if event == "line" and fid is not None:
+            self.line_step[fid] = len(self.steps)
         if event == "return" and stack:
             self.prev_sigs.pop(stack[-1]["id"], None)
+            self.line_step.pop(stack[-1]["id"], None)
             self.frame_ids.pop(id(frame), None)
         self.steps.append(step)
+
+    def on_call_result(self, line, col, value):
+        """Attach the value of a call to the step of the line that made it."""
+        if self.limit_hit:
+            return
+        try:
+            caller = sys._getframe(2)
+        except ValueError:
+            return
+        fid = self.frame_ids.get(id(caller))
+        idx = self.line_step.get(fid)
+        if idx is None:
+            return
+        if value is None or isinstance(value, bool):
+            desc = [repr(value), type(value).__name__]
+        elif type(value) in (int, float, complex, str):
+            desc = [_short(repr(value), 60), type(value).__name__]
+        else:
+            desc = [_short(_safe_repr(value), 60), _type_name(value)]
+        calls = self.steps[idx].setdefault("calls", [])
+        if len(calls) < 50:
+            calls.append([line, col] + desc)
 
     # -- the trace function -------------------------------------------
     def trace(self, frame, event, arg):
@@ -484,7 +718,14 @@ class Tracer:
         }
 
         try:
-            compiled = compile(self.code, USER_FILE, "exec")
+            tree = ast.parse(self.code, USER_FILE)
+            try:
+                result["scaffold"] = build_scaffold(self.code, tree)
+            except Exception:
+                result["scaffold"] = None
+            recorded = CallRecorder(self.lines).visit(ast.parse(self.code, USER_FILE))
+            ast.fix_missing_locations(recorded)
+            compiled = compile(recorded, USER_FILE, "exec")
         except SyntaxError as exc:
             result["error"] = {
                 "type": type(exc).__name__,
@@ -541,6 +782,13 @@ class Tracer:
         sys.stdin = stdin
         sys.argv = ["main.py"]
         builtins.input = traced_input
+        tracer_self = self
+
+        def pvx_call(line, col, value):
+            tracer_self.on_call_result(line, col, value)
+            return value
+
+        builtins.__pvx_call__ = pvx_call
         time.sleep = short_sleep
         sys.modules["__main__"] = main_mod
 
@@ -601,6 +849,10 @@ class Tracer:
             if real[5] is not None:
                 sys.modules["__main__"] = real[5]
             builtins.input = real_input
+            try:
+                del builtins.__pvx_call__
+            except AttributeError:
+                pass
 
         if self.limit_hit == "steps":
             result["step_limit_hit"] = True

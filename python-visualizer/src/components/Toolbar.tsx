@@ -11,35 +11,44 @@ import {
   IconBrandGithub,
   IconLoader2,
   IconAlertTriangle,
+  IconRepeat,
+  IconRepeatOff,
 } from '@tabler/icons-react';
-import { useAppStore } from '../store';
+import { useAppStore, stepCount, shownTrace } from '../store';
 import { EXAMPLES } from '../examples';
 import { errorStepIndex } from '../lib/explain';
 import { openUrl } from '../lib/open';
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4, 8];
-const BASE_MS = 900;
+const BASE_MS = 1100;
 
 export function Toolbar() {
-  const trace = useAppStore((s) => s.trace);
+  const trace = useAppStore((s) => shownTrace(s));
   const stepIndex = useAppStore((s) => s.stepIndex);
   const isPlaying = useAppStore((s) => s.isPlaying);
   const speed = useAppStore((s) => s.speed);
   const status = useAppStore((s) => s.status);
   const autoRun = useAppStore((s) => s.settings.autoRun);
+  const loop = useAppStore((s) => s.settings.loop);
   const { setPlaying, stepBy, setStepIndex, setSpeed, requestRun, setSettingsOpen, setCode, setStdin, updateSettings } =
     useAppStore.getState();
 
   const total = trace?.steps.length ?? 0;
   const hasSteps = total > 0;
 
+  // Playback: keeps flowing through the program (and loops) until paused.
   useEffect(() => {
     if (!isPlaying) return;
+    let hold = 0;
     const t = setInterval(() => {
       const s = useAppStore.getState();
-      const n = s.trace?.steps.length ?? 0;
-      if (s.stepIndex >= n - 1) s.setPlaying(false);
-      else s.stepBy(1);
+      const n = stepCount(s);
+      if (s.stepIndex >= n - 1 && hold < 2) {
+        hold++; // linger on the final state before starting over
+        return;
+      }
+      hold = 0;
+      s.tick();
     }, BASE_MS / speed);
     return () => clearInterval(t);
   }, [isPlaying, speed]);
@@ -88,7 +97,7 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-center">
-        <button className="icon-btn" onClick={() => setStepIndex(0)} disabled={!hasSteps || stepIndex === 0} title="First step (Home)">
+        <button className="icon-btn" onClick={() => { setPlaying(false); setStepIndex(0); }} disabled={!hasSteps || stepIndex === 0} title="First step (Home)">
           <IconPlayerSkipBack size={17} />
         </button>
         <button className="icon-btn" onClick={() => stepBy(-1)} disabled={!hasSteps || stepIndex === 0} title="Previous step (←)">
@@ -100,7 +109,7 @@ export function Toolbar() {
         <button className="icon-btn" onClick={() => stepBy(1)} disabled={!hasSteps || stepIndex >= total - 1} title="Next step (→)">
           <IconChevronRight size={19} />
         </button>
-        <button className="icon-btn" onClick={() => setStepIndex(total - 1)} disabled={!hasSteps || stepIndex >= total - 1} title="Last step (End)">
+        <button className="icon-btn" onClick={() => { setPlaying(false); setStepIndex(total - 1); }} disabled={!hasSteps || stepIndex >= total - 1} title="Last step (End)">
           <IconPlayerSkipForward size={17} />
         </button>
         <div className="scrubber">
@@ -121,13 +130,20 @@ export function Toolbar() {
               className="scrub-error"
               style={{ left: `${(errIdx / (total - 1)) * 100}%` }}
               title="Jump to the error"
-              onClick={() => setStepIndex(errIdx)}
+              onClick={() => { setPlaying(false); setStepIndex(errIdx); }}
             >
               <IconAlertTriangle size={12} />
             </button>
           )}
         </div>
         <span className="step-count">{hasSteps ? `Step ${stepIndex + 1} of ${total}` : 'No steps'}</span>
+        <button
+          className={`icon-btn ${loop ? 'icon-on' : ''}`}
+          onClick={() => updateSettings({ loop: !loop })}
+          title={loop ? 'Looping: playback restarts at the end (click to stop at the end)' : 'Not looping (click to loop)'}
+        >
+          {loop ? <IconRepeat size={17} /> : <IconRepeatOff size={17} />}
+        </button>
         <select className="select select-small" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Playback speed">
           {SPEEDS.map((s) => (
             <option key={s} value={s}>

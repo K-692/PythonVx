@@ -27,6 +27,36 @@ export interface Step {
   ret?: ValueRef;
   exc?: { type: string; msg: string };
   unwinding?: boolean;
+  /** Values produced by calls made on this line: [line, col, text, type] */
+  calls?: [number, number, string, string][];
+}
+
+export interface Tok {
+  s: string;
+  c: number;
+  k: 'name' | 'kw' | 'num' | 'str' | 'op' | 'comment';
+  chain?: string;
+  attr?: boolean;
+  store?: boolean;
+  call?: boolean;
+  def?: boolean;
+}
+
+export interface Block {
+  k: string; // module | stmt | hdr | def | class | if | for | while | try | with | except | case | match ...
+  l: number;
+  e: number;
+  line?: number;
+  name?: string;
+  qual?: string;
+  args?: string[];
+  bases?: string[];
+  items?: Block[];
+}
+
+export interface Scaffold {
+  lines: Record<string, Tok[]>;
+  blocks: Block;
 }
 
 export type HeapObject =
@@ -63,6 +93,7 @@ export interface Trace {
   stdout_truncated?: boolean;
   sleep_capped?: boolean;
   elapsed_ms?: number;
+  scaffold?: Scaffold | null;
 }
 
 export interface Interpreter {

@@ -6,7 +6,7 @@ import { Visualizer } from './components/Visualizer';
 import { Console } from './components/Console';
 import { SettingsDialog } from './components/SettingsDialog';
 import { StatusBar } from './components/StatusBar';
-import { useAppStore } from './store';
+import { useAppStore, stepCount } from './store';
 import { detectPython, isDesktop } from './lib/runner';
 
 function isTyping(target: EventTarget | null) {
@@ -25,11 +25,16 @@ function App() {
         return;
       }
       if (isTyping(e.target) || s.settingsOpen) return;
-      const n = s.trace?.steps.length ?? 0;
+      const n = stepCount(s);
       if (e.key === 'ArrowRight') s.stepBy(1);
       else if (e.key === 'ArrowLeft') s.stepBy(-1);
-      else if (e.key === 'Home') s.setStepIndex(0);
-      else if (e.key === 'End') s.setStepIndex(n - 1);
+      else if (e.key === 'Home') {
+        s.setPlaying(false);
+        s.setStepIndex(0);
+      } else if (e.key === 'End') {
+        s.setPlaying(false);
+        s.setStepIndex(n - 1);
+      }
       else if (e.key === ' ') s.setPlaying(!s.isPlaying);
       else return;
       e.preventDefault();

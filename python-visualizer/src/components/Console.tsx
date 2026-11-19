@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useAppStore } from '../store';
+import { useAppStore, shownTrace } from '../store';
 
 /** Program output (up to the current step) and the program's input box. */
 export function Console() {
-  const trace = useAppStore((s) => s.trace);
+  const trace = useAppStore((s) => shownTrace(s));
   const stepIndex = useAppStore((s) => s.stepIndex);
   const stdin = useAppStore((s) => s.stdin);
   const setStdin = useAppStore((s) => s.setStdin);
