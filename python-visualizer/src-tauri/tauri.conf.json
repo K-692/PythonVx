@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PythonVx",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.krish.pythonvisualizer",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,8 +13,11 @@
     "windows": [
       {
         "title": "PythonVx",
-        "width": 800,
-        "height": 600
+        "width": 1360,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true
       }
     ],
     "security": {
@@ -33,7 +36,13 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "entitlements": "entitlements.plist"
-    }
+      "entitlements": "entitlements.plist",
+      "signingIdentity": "-",
+      "minimumSystemVersion": "10.15"
+    },
+    "shortDescription": "See your Python code run, step by step",
+    "longDescription": "PythonVx is a step-by-step Python visualizer for learners: it shows variables, objects, function calls and output for every line your program runs.",
+    "copyright": "Copyright (c) 2026 Krishnendu Pal. MIT License.",
+    "publisher": "Krishnendu Pal"
   }
 }

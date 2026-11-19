@@ -29,3 +29,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+# Local tooling
+.claude/
+python-visualizer/public/mock.json
+python-visualizer/public/mock2.json

@@ -9,6 +9,8 @@ export default defineConfig(async () => ({
   plugins: [react()],
   // Use relative base path for portability across environments (GitHub Pages, Tauri, etc.)
   base: "./",
+  // Monaco is bundled locally (works offline); the large chunk is expected for a desktop app.
+  build: { chunkSizeWarningLimit: 5000, target: "es2021" },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

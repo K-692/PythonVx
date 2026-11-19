@@ -1,0 +1,31 @@
+import { useAppStore } from '../store';
+import { isDesktop } from '../lib/runner';
+
+export function StatusBar() {
+  const status = useAppStore((s) => s.status);
+  const trace = useAppStore((s) => s.trace);
+  const interpreter = useAppStore((s) => s.interpreter);
+  const runError = useAppStore((s) => s.runError);
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
+
+  let message = 'Ready';
+  if (status === 'running') message = 'Running…';
+  else if (runError) message = 'Could not run the program';
+  else if (trace?.error) message = `Stopped with ${trace.error.type}`;
+  else if (trace) message = `Finished in ${trace.elapsed_ms ?? 0} ms · ${trace.steps.length} steps`;
+
+  return (
+    <footer className="statusbar">
+      <span className={`status-dot status-${runError || trace?.error ? 'bad' : status}`} />
+      <span>{message}</span>
+      <span className="spacer" />
+      {isDesktop() ? (
+        <button className="link-btn" onClick={() => setSettingsOpen(true)} title="Change interpreter in Settings">
+          {interpreter ? `Python ${interpreter.version}` : 'Python not found – open Settings'}
+        </button>
+      ) : (
+        <span>Browser preview (Python runs only in the desktop app)</span>
+      )}
+    </footer>
+  );
+}
