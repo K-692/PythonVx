@@ -28,7 +28,7 @@ export function StatusBar() {
         </button>
       )}
       <span className="spacer" />
-      {isDesktop() ? (
+      {isDesktop() || interpreter ? (
         <button className="link-btn" onClick={() => setSettingsOpen(true)} title="Change interpreter in Settings">
           {interpreter ? `Python ${interpreter.version}` : 'Python not found – open Settings'}
         </button>

@@ -2,6 +2,8 @@
 
 **See your Python code run, one step at a time.**
 
+![PythonVx – code flow diagram of a class example](docs/screenshots/code-flow-classes.png)
+
 PythonVx is a desktop app for people who are learning Python — or who have never programmed before. As you type, the right-hand panel redraws your program as a **block diagram**: every line becomes a block, every variable gets a little box showing its value, and the highlight **flows through the blocks line by line**, exactly the way Python runs your code. Playback keeps looping until you press pause.
 
 - **Code-flow diagram** — functions are drawn as blocks with their arguments, classes as dashed blocks around their methods, and `for` / `while` / `if` / `try` blocks get a coloured rail (loops show how many times they ran). Values **fly into** the variable on the left of `=`; the values a line reads are shown under each name; calls like `len(x)` or `acct.deposit(50)` show the value they returned; `print` lines show what they printed and `return` lines show what they returned.
@@ -13,6 +15,17 @@ PythonVx is a desktop app for people who are learning Python — or who have nev
 - **26 sample programs** (variables, loops, functions, recursion, lists, dictionaries, sorting, classes, inheritance, and tours of `math`, `random`, `collections`, `datetime`, `json`, `itertools`, `re`, `statistics`…) in the **Examples** menu — also available as plain `.py` files in [`samples/`](samples).
 
 It works with the whole Python standard library — `math`, `random`, `datetime`, `collections`, `json`, `re`, `itertools`, `functools`, `statistics`, `dataclasses`, `pathlib`, `asyncio` and the rest — because it runs your code with the real Python installed on your computer. Editor autocomplete and hover help are generated from that interpreter too, so every built-in module is covered.
+
+## Screenshots
+
+| | |
+| :---: | :---: |
+| ![Loops: nested for-loops with live values and loop counters](docs/screenshots/loops-bubble-sort.png) | ![Recursion: a function block several calls deep, returning values](docs/screenshots/recursion.png) |
+| **Loops** — each pass updates the boxes; `for ↻ 8` counts the runs | **Recursion** — "3 calls deep", with each return value |
+| ![Memory view: two names pointing to the same list](docs/screenshots/memory-view.png) | ![Friendly errors: the failing line, the error and a hint](docs/screenshots/friendly-errors.png) |
+| **Memory** — `fruits` and `basket` point to the same list | **Errors** — where it failed, what it means, how to fix it |
+| ![Reading input from the Program input box](docs/screenshots/input.png) | |
+| **input()** — answers come from the Program input box | |
 
 ---
 
