@@ -1467,3 +1467,6 @@ textarea {
 .caption {
   background: #161925;
 }
+.status-notice {
+  color: var(--accent-2);
+}

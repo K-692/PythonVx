@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Interpreter, Trace } from './types';
-import { DEFAULT_EXAMPLE } from './examples';
+import { DEFAULT_EXAMPLE, EXAMPLES } from './examples';
 
 export interface Settings {
   pythonPath: string;
@@ -94,6 +94,14 @@ interface AppState {
   runRequest: number;
   requestRun: () => void;
 
+  /** Replace the editor content with an example and run it right away. */
+  loadExample: (code: string, stdin: string, title: string) => void;
+  /** The user's own code saved when an example replaced it. */
+  savedCode: string | null;
+  restoreSavedCode: () => void;
+  isExampleCode: (code: string) => boolean;
+  notice: string | null;
+
   settingsOpen: boolean;
   setSettingsOpen: (o: boolean) => void;
 }
@@ -111,7 +119,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   code: load('pvx.code', DEFAULT_EXAMPLE.code),
   setCode: (code) => {
     save('pvx.code', code);
-    set({ code, dirty: code !== get().tracedCode });
+    set({ code, dirty: code !== get().tracedCode, notice: null });
   },
   stdin: load('pvx.stdin', ''),
   setStdin: (stdin) => {
@@ -212,6 +220,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   dirty: true,
   runRequest: 0,
   requestRun: () => set({ runRequest: get().runRequest + 1 }),
+
+  savedCode: load<string | null>('pvx.savedCode', null),
+  notice: null,
+  loadExample: (code, stdin, title) => {
+    const cur = get().code;
+    const isExample = cur === code || !cur.trim() || get().isExampleCode(cur);
+    if (!isExample) {
+      save('pvx.savedCode', cur);
+      set({ savedCode: cur });
+    }
+    save('pvx.code', code);
+    save('pvx.stdin', stdin);
+    set({ code, stdin, dirty: true, userPaused: false, notice: `Loaded example: ${title}` });
+    get().requestRun();
+  },
+  restoreSavedCode: () => {
+    const saved = get().savedCode;
+    if (saved == null) return;
+    save('pvx.code', saved);
+    save('pvx.savedCode', null);
+    set({ code: saved, savedCode: null, dirty: true, userPaused: false, notice: 'Your code was restored' });
+    get().requestRun();
+  },
+  isExampleCode: (c) => EXAMPLES.some((e) => e.code === c),
 
   settingsOpen: false,
   setSettingsOpen: (o) => set({ settingsOpen: o }),

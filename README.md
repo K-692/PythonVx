@@ -132,8 +132,8 @@ python src-tauri/python/test_tracer.py
 Pushing a version tag builds Windows, macOS (Apple Silicon and Intel) and Linux installers on GitHub Actions and publishes them as a release:
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.1.1
+git push origin v1.1.1
 ```
 
 The version number lives in `python-visualizer/package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.

@@ -30,7 +30,8 @@ export function Toolbar() {
   const status = useAppStore((s) => s.status);
   const autoRun = useAppStore((s) => s.settings.autoRun);
   const loop = useAppStore((s) => s.settings.loop);
-  const { setPlaying, stepBy, setStepIndex, setSpeed, requestRun, setSettingsOpen, setCode, setStdin, updateSettings } =
+  const currentExample = useAppStore((s) => EXAMPLES.find((e) => e.code === s.code)?.id ?? '');
+  const { setPlaying, stepBy, setStepIndex, setSpeed, requestRun, setSettingsOpen, updateSettings } =
     useAppStore.getState();
 
   const total = trace?.steps.length ?? 0;
@@ -53,16 +54,13 @@ export function Toolbar() {
     return () => clearInterval(t);
   }, [isPlaying, speed]);
 
+  // Load the chosen example straight into the editor and start it playing.
+  // (No confirm dialog: the desktop WebView doesn't show window.confirm.
+  //  Your own code is kept and can be restored from the status bar or Ctrl/⌘+Z.)
   const loadExample = (id: string) => {
     const ex = EXAMPLES.find((e) => e.id === id);
     if (!ex) return;
-    const s = useAppStore.getState();
-    if (s.code.trim() && !EXAMPLES.some((e) => e.code === s.code)) {
-      if (!window.confirm('Replace the code in the editor with this example?')) return;
-    }
-    setCode(ex.code);
-    setStdin(ex.stdin ?? '');
-    if (!autoRun) requestRun();
+    useAppStore.getState().loadExample(ex.code, ex.stdin ?? '', ex.title);
   };
 
   const errIdx = trace ? errorStepIndex(trace) : -1;
@@ -72,7 +70,7 @@ export function Toolbar() {
     <header className="toolbar">
       <div className="toolbar-left">
         <span className="brand">PythonVx</span>
-        <select className="select" value="" onChange={(e) => loadExample(e.target.value)} title="Load an example program">
+        <select className="select" value={currentExample} onChange={(e) => loadExample(e.target.value)} title="Load an example program">
           <option value="" disabled>
             Examples…
           </option>
